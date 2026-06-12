@@ -205,7 +205,7 @@ with st.sidebar:
     )
 
     st.divider()
-    st.header("Model C — Misty")
+    st.header("Model C")
     st.session_state.msty_name = st.text_input(
         "Display name",
         value=DEFAULT_MSTY_NAME,
@@ -223,7 +223,7 @@ with st.sidebar:
     )
     st.session_state.msty_system = st.text_area(
         "System prompt",
-        value="You are a creative AI taking part in a conversation with two other AIs. Reply naturally and keep your response to at most 2 sentences. Do not send the thinking instruction, just respond to the conversation.",
+        value="You are a creative AI taking part in a conversation with two other AIs. Reply naturally and keep your response to at most 2 sentences.",
         key="input_msty_system",
         height=100,
     )

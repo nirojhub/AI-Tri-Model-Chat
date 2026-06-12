@@ -36,7 +36,24 @@ class ConversationState:
 def _get_input_text(state: ConversationState) -> str:
     if state.turn_index == 0:
         return state.seed_message
-    return state.messages[-1]["content"]
+    
+    # Get the last message
+    last_message = state.messages[-1]
+    
+    # If we have at least 2 messages, also get the previous one for context
+    if len(state.messages) >= 2:
+        previous_message = state.messages[-2]
+        combined_context = (
+            f"Previous response from {previous_message['speaker']}:\n"
+            f"{previous_message['content']}\n\n"
+            f"Latest response from {last_message['speaker']}:\n"
+            f"{last_message['content']}\n\n"
+            f"Please consider both responses above and provide your reply. "
+            f"Keep your conversation around \"{state.seed_message}\" and avoid diverging into unrelated topics."
+        )
+        return combined_context
+    
+    return last_message["content"]
 
 
 def _get_active_config(state: ConversationState) -> ModelConfig:
@@ -67,7 +84,6 @@ def _build_llm(state: ConversationState,config: ModelConfig):
             base_url=config.base_url,
             temperature=config.temperature,
         )
-    
 
 
 def _build_messages(config: ModelConfig, input_text: str) -> list:
@@ -90,16 +106,14 @@ def run_single_turn(state: ConversationState) -> ConversationState:
 
     try:
         llm = _build_llm(state, config)
-        response = llm.invoke(_build_messages(config, input_text))
+        input_messages = _build_messages(config, input_text)
+        response = llm.invoke(input_messages)
         content = response.content if isinstance(response, AIMessage) else str(response.content)
 
-        # If this is the third model in the conversation (model_c), remove any
-        # internal "<think>...</think>" sections before showing the reply.
-        # This removes the entire think block and any remaining tags.
-        if config is state.model_c:
-            content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL | re.IGNORECASE)
-            content = re.sub(r"</?think>", "", content, flags=re.IGNORECASE)
-            content = content.strip()
+        # This removes the entire think block and any remaining tags.        
+        content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL | re.IGNORECASE)
+        content = re.sub(r"</?think>", "", content, flags=re.IGNORECASE)
+        content = content.strip()
 
         state.messages.append(
             {
