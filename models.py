@@ -1,3 +1,13 @@
+"""
+Project Name: AI-TRI-MODEL-CHAT
+Author: Niroj Kumar Sahoo (nirojkumarsahoo55@gmail.com)
+Copyright (c) 2026 Niroj Kumar Sahoo
+License: MIT License 
+Source: https://github.com/nirojhub/AI-Tri-Model-Chat
+Description: Defines the model configurations and helper functions to build language models 
+             for the tri-model chat application. 
+"""
+
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 

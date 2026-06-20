@@ -1,12 +1,23 @@
+"""
+Project Name: AI-TRI-MODEL-CHAT
+Author: Niroj Kumar Sahoo (nirojkumarsahoo55@gmail.com)
+Copyright (c) 2026 Niroj Kumar Sahoo
+License: MIT License 
+Source: https://github.com/nirojhub/AI-Tri-Model-Chat
+Description: Main program that orchestrates the tri-model chat discussion.
+"""
+
+import base64
 import html
 import os
+import time
 import streamlit as st
 from dotenv import load_dotenv
 from conversation import ConversationState, ModelConfig, get_active_speaker_name, run_single_turn
 
 load_dotenv()
 
-st.set_page_config(page_title="Tri Model Chat", page_icon="💬", layout="wide")
+st.set_page_config(page_title="Tri Model Discussion", page_icon="💬", layout="wide")
 
 DEFAULT_OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
 DEFAULT_OLLAMA_URL = os.getenv("OLLAMA_BASE_URL")
@@ -34,6 +45,8 @@ def init_session_state() -> None:
         "turn_index": 0,
         "last_error": None,
         "conv_state": None,
+        "voice_enabled": True,
+        "last_audio_end_time": 0,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -69,6 +82,7 @@ def build_config_from_sidebar() -> ConversationState:
         messages=st.session_state.messages,
         running=st.session_state.running,
         last_error=st.session_state.last_error,
+        voice_enabled=st.session_state.voice_enabled,
     )
 
 
@@ -78,6 +92,7 @@ def sync_session_from_state(state: ConversationState) -> None:
     st.session_state.running = state.running
     st.session_state.last_error = state.last_error
     st.session_state.conv_state = state
+    st.session_state.voice_enabled = state.voice_enabled
 
 
 def inject_bubble_styles() -> None:
@@ -94,7 +109,7 @@ def inject_bubble_styles() -> None:
     .bubble.left { border-bottom-left-radius: 0.25rem; }
     .bubble.right { border-bottom-right-radius: 0.25rem; }
     .bubble.model-a { background: #f0f5ff; border: 1px solid #8a9eff; }
-    .bubble.model-b { background: #e8f7ff; border: 1px solid #5cc4ff; }
+    .bubble.model-b { background: #ffe8e8; border: 1px solid #ff5c5c; }
     .bubble.model-c { background: #fff4e6; border: 1px solid #ffbf6b; }
     .bubble.typing { opacity: 0.9; font-style: italic; color: #555 !important; border: 1px dashed #999; }
     .bubble-meta {
@@ -133,14 +148,61 @@ def render_typing_bubble(speaker: str, side: str, model_class: str) -> None:
     )
 
 
+def render_autoplay_audio(audio_bytes: bytes) -> None:
+    """Render audio with autoplay enabled using HTML5 audio element."""
+    if not audio_bytes:
+        return
+    
+    audio_b64 = base64.b64encode(audio_bytes).decode()
+    audio_html = f'<audio autoplay><source src="data:audio/wav;base64,{audio_b64}" type="audio/wav"></audio>'
+    st.markdown(audio_html, unsafe_allow_html=True)
+
+
+def get_audio_duration(audio_bytes: bytes, sample_rate: int = 24000, channels: int = 1, sample_width: int = 2) -> float:
+    """Calculate audio duration in seconds from WAV audio bytes."""
+    if not audio_bytes or len(audio_bytes) < 44:
+        return 0.0
+    # WAV header is 44 bytes, followed by audio data
+    # Duration = audio_data_size / (sample_rate * channels * sample_width)
+    audio_data_size = len(audio_bytes) - 44
+    if audio_data_size <= 0:
+        return 0.0
+    total_samples = audio_data_size / (channels * sample_width)
+    return total_samples / sample_rate
+
 init_session_state()
 
-st.title("Tri-Model Local Chat")
+st.title("Tri-Model Local Discussion")
 st.caption(
-    f"Three local models chat with each other — {DEFAULT_OLLAMA_NAME}, {DEFAULT_LMSTUDIO_NAME}, and {DEFAULT_MSTY_NAME } take turns."
+    f"Three local models discuss with each other — {DEFAULT_OLLAMA_NAME}, {DEFAULT_LMSTUDIO_NAME}, and {DEFAULT_MSTY_NAME } take turns."
 )
 
 with st.sidebar:
+    st.header("Conversation")
+    st.session_state.seed_message = st.text_area(
+        "Seed message (starts the chat)",
+        value=DEFAULT_SEED,
+        key="input_seed",
+        height=80,
+    )
+    st.session_state.voice_enabled = st.checkbox(
+        "Enable voice playback",
+        value=st.session_state.voice_enabled,
+        key="input_voice_enabled",
+    )
+    # If the user disables voice playback, clear any pending audio wait timer
+    if not st.session_state.voice_enabled:
+        st.session_state.last_audio_end_time = 0
+    st.session_state.max_turns = st.number_input(
+        "Max turns",
+        min_value=2,
+        max_value=200,
+        value=DEFAULT_MAX_TURNS,
+        step=2,
+        key="input_max_turns",
+    )
+
+    st.divider()
     st.header("Model A")
     st.session_state.ollama_name = st.text_input(
         "Display name",
@@ -236,23 +298,6 @@ with st.sidebar:
         key="input_temp_c",
     )
 
-    st.divider()
-    st.header("Conversation")
-    st.session_state.seed_message = st.text_area(
-        "Seed message (starts the chat)",
-        value=DEFAULT_SEED,
-        key="input_seed",
-        height=80,
-    )
-    st.session_state.max_turns = st.number_input(
-        "Max turns",
-        min_value=2,
-        max_value=200,
-        value=DEFAULT_MAX_TURNS,
-        step=2,
-        key="input_max_turns",
-    )
-
 col_start, col_stop, col_clear = st.columns(3)
 
 with col_start:
@@ -297,7 +342,7 @@ with status_col:
             f"Turn {st.session_state.turn_index + 1}/{st.session_state.max_turns} — {active} is thinking...",
             state="running",
         )
-    elif st.session_state.turn_index >= st.session_state.max_turns and st.session_state.messages:
+    elif st.session_state.turn_index > st.session_state.max_turns and st.session_state.messages:
         st.success(f"Reached max turns ({st.session_state.max_turns}). Conversation stopped.")
     elif st.session_state.messages:
         st.info("Conversation paused. Click **Start** to continue from the beginning, or **Clear** to reset.")
@@ -310,8 +355,18 @@ inject_bubble_styles()
 for msg in st.session_state.messages:
     side = "left" if msg["turn"] % 2 == 0 else "right"
     render_bubble(msg["speaker"], msg["content"], side, msg["turn"])
-
-if st.session_state.running and st.session_state.turn_index < st.session_state.max_turns:
+    if st.session_state.voice_enabled and msg.get("audio"):
+        render_autoplay_audio(msg["audio"])
+    
+if st.session_state.running and st.session_state.turn_index <= st.session_state.max_turns:
+    # Check if last audio is still playing
+    current_time = time.time()
+    # Only wait for previous audio if voice playback is enabled
+    if st.session_state.voice_enabled and current_time < st.session_state.last_audio_end_time:
+        # Audio still playing, wait and recheck
+        time.sleep(0.1)
+        st.rerun()
+    
     state = build_config_from_sidebar()
     active_name = get_active_speaker_name(state)
     typing_side = "left" if state.turn_index % 2 == 0 else "right"
@@ -323,7 +378,13 @@ if st.session_state.running and st.session_state.turn_index < st.session_state.m
 
     sync_session_from_state(state)
 
+    # Update audio end time if new audio was generated
+    if st.session_state.voice_enabled and state.messages and state.messages[-1].get("audio"):
+        audio_duration = get_audio_duration(state.messages[-1]["audio"])
+        st.session_state.last_audio_end_time = time.time() + audio_duration
+
+
     if state.last_error:
         st.error(state.last_error)
-    elif state.running and state.turn_index < state.max_turns:
+    elif state.running and state.turn_index <= state.max_turns:
         st.rerun()

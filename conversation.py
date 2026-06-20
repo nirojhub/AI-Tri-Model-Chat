@@ -1,6 +1,20 @@
-from dataclasses import dataclass, field
-import re
+"""
+Project Name: AI-TRI-MODEL-CHAT
+Author: Niroj Kumar Sahoo (nirojkumarsahoo55@gmail.com)
+Copyright (c) 2026 Niroj Kumar Sahoo
+License: MIT License 
+Source: https://github.com/nirojhub/AI-Tri-Model-Chat
+Description: Defines the conversation state and logic for managing the tri-model chat discussion, 
+including message construction, model invocation, and optional text-to-speech synthesis. 
+"""
 
+from dataclasses import dataclass, field
+import io
+import re
+import wave
+
+import numpy as np
+from kokoro import KPipeline
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from models import build_lmstudio_model, build_ollama_model, build_msty_model
@@ -10,6 +24,11 @@ BREVITY_INSTRUCTION = (
     "Be concise and do not use bullet points or numbered lists."
 )
 
+TTS_SAMPLE_RATE = 24000  # Kokoro outputs at 24kHz
+VOICE_PRESETS = ["af_sky", "am_adam", "bm_george"]
+
+print("📥 Loading Kokoro TTS (82M)...")
+tts_pipeline = KPipeline(lang_code='a')  # 'a' for American English
 
 @dataclass
 class ModelConfig:
@@ -31,6 +50,7 @@ class ConversationState:
     messages: list[dict] = field(default_factory=list)
     running: bool = False
     last_error: str | None = None
+    voice_enabled: bool = False
 
 
 def _get_input_text(state: ConversationState) -> str:
@@ -96,6 +116,39 @@ def _build_messages(config: ModelConfig, input_text: str) -> list:
     return messages
 
 
+def _get_voice_preset(turn: int) -> str:
+    return VOICE_PRESETS[turn % len(VOICE_PRESETS)]
+
+
+def synthesize_speech(text: str, turn: int) -> bytes | None:
+    if not text or not text.strip():
+        return None
+
+    voice_preset = _get_voice_preset(turn)
+    audio_chunks = []
+    for _, _, audio in tts_pipeline(text, voice=voice_preset, speed=1.0, split_pattern=r'\n+'):
+        audio_chunks.append(np.asarray(audio))
+
+    if not audio_chunks:
+        return None
+
+    combined_audio = np.concatenate(audio_chunks)
+    if combined_audio.dtype.kind == "f":
+        combined_audio = np.clip(combined_audio, -1.0, 1.0)
+        combined_audio = (combined_audio * 32767).astype(np.int16)
+    elif combined_audio.dtype != np.int16:
+        combined_audio = combined_audio.astype(np.int16)
+
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(TTS_SAMPLE_RATE)
+        wav_file.writeframes(combined_audio.tobytes())
+
+    return buffer.getvalue()
+
+
 def run_single_turn(state: ConversationState) -> ConversationState:
     if state.turn_index >= state.max_turns:
         state.running = False
@@ -115,17 +168,30 @@ def run_single_turn(state: ConversationState) -> ConversationState:
         content = re.sub(r"</?think>", "", content, flags=re.IGNORECASE)
         content = content.strip()
 
+        audio_bytes = None
+        if state.voice_enabled:
+            try:
+                audio_bytes = synthesize_speech(content, state.turn_index)
+            except Exception as exc:
+                print(f"TTS generation failed for turn {state.turn_index}: {exc}")
+                audio_bytes = None
+                state.last_audio_end_time = 0
+        else:
+            audio_bytes = None
+            state.last_audio_end_time = 0
+
         state.messages.append(
             {
                 "speaker": config.name,
                 "content": content,
                 "turn": state.turn_index,
+                "audio": audio_bytes,
             }
         )
         state.turn_index += 1
         state.last_error = None
 
-        if state.turn_index >= state.max_turns:
+        if state.turn_index > state.max_turns:
             state.running = False
 
     except Exception as exc:
