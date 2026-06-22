@@ -22,20 +22,29 @@ st.set_page_config(page_title="Tri Model Discussion", page_icon="💬", layout="
 DEFAULT_OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
 DEFAULT_OLLAMA_URL = os.getenv("OLLAMA_BASE_URL")
 DEFAULT_OLLAMA_NAME = os.getenv("OLLAMA_NAME")
+DEFAULT_OLLAMA_SYSTEM = os.getenv("OLLAMA_SYSTEM_PROMPT")
 
 DEFAULT_LMSTUDIO_MODEL = os.getenv("LMSTUDIO_MODEL")
 DEFAULT_LMSTUDIO_URL = os.getenv("LMSTUDIO_BASE_URL")
 DEFAULT_LMSTUDIO_NAME = os.getenv("LMSTUDIO_NAME")
+DEFAULT_LMSTUDIO_SYSTEM = os.getenv("LMSTUDIO_SYSTEM_PROMPT")
 
 DEFAULT_MSTY_MODEL = os.getenv("MSTY_MODEL")
 DEFAULT_MSTY_URL = os.getenv("MSTY_BASE_URL")
 DEFAULT_MSTY_NAME = os.getenv("MSTY_NAME")
+DEFAULT_MSTY_SYSTEM = os.getenv("MSTY_SYSTEM_PROMPT")
 
 DEFAULT_SEED = os.getenv("SEED_MESSAGE")
-DEFAULT_MAX_TURNS = int(os.getenv("MAX_TURNS"))
-DEFAULT_TEMP_A = float(os.getenv("TEMPERATURE_A"))
-DEFAULT_TEMP_B = float(os.getenv("TEMPERATURE_B"))
-DEFAULT_TEMP_C = float(os.getenv("TEMPERATURE_C"))
+DEFAULT_MAX_TURNS = int(os.getenv("MAX_TURNS", "10"))
+DEFAULT_TEMP_A = float(os.getenv("TEMPERATURE_A", "0.9"))
+DEFAULT_TEMP_B = float(os.getenv("TEMPERATURE_B", "0.9"))
+DEFAULT_TEMP_C = float(os.getenv("TEMPERATURE_C", "0.9"))
+DEFAULT_TOP_P_A = float(os.getenv("TOP_P_A", "0.95"))
+DEFAULT_TOP_P_B = float(os.getenv("TOP_P_B", "0.95"))
+DEFAULT_TOP_P_C = float(os.getenv("TOP_P_C", "0.95"))
+DEFAULT_FREQUENCY_PENALTY_A = float(os.getenv("FREQUENCY_PENALTY_A", "0.4"))
+DEFAULT_FREQUENCY_PENALTY_B = float(os.getenv("FREQUENCY_PENALTY_B", "0.4"))
+DEFAULT_FREQUENCY_PENALTY_C = float(os.getenv("FREQUENCY_PENALTY_C", "0.4"))
 
 
 def init_session_state() -> None:
@@ -60,21 +69,27 @@ def build_config_from_sidebar() -> ConversationState:
             model=st.session_state.ollama_model,
             base_url=st.session_state.ollama_url,
             system_prompt=st.session_state.ollama_system,
-            temperature=st.session_state.temp_a
+            temperature=st.session_state.temp_a,
+            top_p=st.session_state.ollama_top_p,
+            frequency_penalty=st.session_state.ollama_frequency_penalty,
         ),
         model_b=ModelConfig(
             name=st.session_state.lmstudio_name,
             model=st.session_state.lmstudio_model,
             base_url=st.session_state.lmstudio_url,
             system_prompt=st.session_state.lmstudio_system,
-            temperature=st.session_state.temp_b
+            temperature=st.session_state.temp_b,
+            top_p=st.session_state.lmstudio_top_p,
+            frequency_penalty=st.session_state.lmstudio_frequency_penalty,
         ),
         model_c=ModelConfig(
             name=st.session_state.msty_name,
             model=st.session_state.msty_model,
             base_url=st.session_state.msty_url,
             system_prompt=st.session_state.msty_system,
-            temperature=st.session_state.temp_c
+            temperature=st.session_state.temp_c,
+            top_p=st.session_state.msty_top_p,
+            frequency_penalty=st.session_state.msty_frequency_penalty,
         ),
         seed_message=st.session_state.seed_message,
         max_turns=st.session_state.max_turns,
@@ -221,17 +236,33 @@ with st.sidebar:
     )
     st.session_state.ollama_system = st.text_area(
         "System prompt",
-        value="You are a thoughtful AI participating in a conversation with other AIs. Respond naturally and build on what the other said. Keep replies to at most 2 sentences.",
+        value=DEFAULT_OLLAMA_SYSTEM,
         key="input_ollama_system",
         height=100,
     )
     st.session_state.temp_a = st.slider(
         "Temperature",
         min_value=0.0,
-        max_value=1.5,
+        max_value=2.0,
         value=DEFAULT_TEMP_A,
         step=0.1,
         key="input_temp_a",
+    )
+    st.session_state.ollama_top_p = st.slider(
+        "Top P",
+        min_value=0.0,
+        max_value=1.0,
+        value=DEFAULT_TOP_P_A,
+        step=0.01,
+        key="input_ollama_top_p",
+    )
+    st.session_state.ollama_frequency_penalty = st.slider(
+        "Frequency penalty",
+        min_value=0.0,
+        max_value=2.0,
+        value=DEFAULT_FREQUENCY_PENALTY_A,
+        step=0.1,
+        key="input_ollama_frequency_penalty",
     )
 
     st.divider()
@@ -253,17 +284,33 @@ with st.sidebar:
     )
     st.session_state.lmstudio_system = st.text_area(
         "System prompt",
-        value="You are a curious AI having a dialogue with other AIs. Respond naturally and build on what the other said, challenge ideas, and keep the conversation engaging. Keep replies to at most 2 sentences.",
+        value=DEFAULT_LMSTUDIO_SYSTEM,
         key="input_lmstudio_system",
         height=100,
     )
     st.session_state.temp_b = st.slider(
         "Temperature",
         min_value=0.0,
-        max_value=1.5,
+        max_value=2.0,
         value=DEFAULT_TEMP_B,
         step=0.1,
         key="input_temp_b",
+    )
+    st.session_state.lmstudio_top_p = st.slider(
+        "Top P",
+        min_value=0.0,
+        max_value=1.0,
+        value=DEFAULT_TOP_P_B,
+        step=0.01,
+        key="input_lmstudio_top_p",
+    )
+    st.session_state.lmstudio_frequency_penalty = st.slider(
+        "Frequency penalty",
+        min_value=0.0,
+        max_value=2.0,
+        value=DEFAULT_FREQUENCY_PENALTY_B,
+        step=0.1,
+        key="input_lmstudio_frequency_penalty",
     )
 
     st.divider()
@@ -285,17 +332,33 @@ with st.sidebar:
     )
     st.session_state.msty_system = st.text_area(
         "System prompt",
-        value="You are a creative AI taking part in a conversation with two other AIs. Reply naturally and keep your response to at most 2 sentences.",
+        value=DEFAULT_MSTY_SYSTEM,
         key="input_msty_system",
         height=100,
     )
     st.session_state.temp_c = st.slider(
         "Temperature",
         min_value=0.0,
-        max_value=1.5,
+        max_value=2.0,
         value=DEFAULT_TEMP_C,
         step=0.1,
         key="input_temp_c",
+    )
+    st.session_state.msty_top_p = st.slider(
+        "Top P",
+        min_value=0.0,
+        max_value=1.0,
+        value=DEFAULT_TOP_P_C,
+        step=0.01,
+        key="input_msty_top_p",
+    )
+    st.session_state.msty_frequency_penalty = st.slider(
+        "Frequency penalty",
+        min_value=0.0,
+        max_value=2.0,
+        value=DEFAULT_FREQUENCY_PENALTY_C,
+        step=0.1,
+        key="input_msty_frequency_penalty",
     )
 
 col_start, col_stop, col_clear = st.columns(3)

@@ -37,6 +37,8 @@ class ModelConfig:
     base_url: str
     system_prompt: str
     temperature: float
+    top_p: float = 0.95
+    frequency_penalty: float = 0.4
 
 
 @dataclass
@@ -56,24 +58,22 @@ class ConversationState:
 def _get_input_text(state: ConversationState) -> str:
     if state.turn_index == 0:
         return state.seed_message
-    
-    # Get the last message
-    last_message = state.messages[-1]
-    
-    # If we have at least 2 messages, also get the previous one for context
-    if len(state.messages) >= 2:
-        previous_message = state.messages[-2]
-        combined_context = (
-            f"Previous response from {previous_message['speaker']}:\n"
-            f"{previous_message['content']}\n\n"
-            f"Latest response from {last_message['speaker']}:\n"
-            f"{last_message['content']}\n\n"
-            f"Please consider both responses above and provide your reply. "
-            f"Keep your conversation around \"{state.seed_message}\" and avoid diverging into unrelated topics."
-        )
-        return combined_context
-    
-    return last_message["content"]
+
+    history_lines = []
+    if state.seed_message and state.seed_message.strip():
+        history_lines.append("Seed message:\n" + state.seed_message.strip())
+
+    for message in state.messages:
+        speaker = message.get("speaker", "Speaker")
+        content = message.get("content", "")
+        history_lines.append(f"{speaker}:\n{content.strip()}")
+
+    history = "\n\n".join(history_lines)
+    return (
+        f"Conversation history:\n{history}\n\n"
+        f"Please respond as the next participant based on the full conversation above. "
+        f"Keep your reply concise, stay on topic, and build directly on the prior discussion."
+    )
 
 
 def _get_active_config(state: ConversationState) -> ModelConfig:
@@ -91,18 +91,24 @@ def _build_llm(state: ConversationState,config: ModelConfig):
             model=config.model,
             base_url=config.base_url,
             temperature=config.temperature,
+            top_p=config.top_p,
+            frequency_penalty=config.frequency_penalty,
         )
     if state.turn_index % 3 == 1:
         return build_lmstudio_model(
             model=config.model,
             base_url=config.base_url,
             temperature=config.temperature,
+            top_p=config.top_p,
+            frequency_penalty=config.frequency_penalty,
         )
     if state.turn_index % 3 == 2:
         return build_msty_model(
             model=config.model,
             base_url=config.base_url,
             temperature=config.temperature,
+            top_p=config.top_p,
+            frequency_penalty=config.frequency_penalty,
         )
 
 
